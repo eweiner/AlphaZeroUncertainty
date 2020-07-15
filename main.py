@@ -104,7 +104,7 @@ def competition(az1:AlphaZero, az2:AlphaZero, env: gym.Env, num_expansions: int,
     
 
 
-def train(az, env, n_iter, tensorboard, logdir, num_expansions, batch_size, save_every, num_rollouts, num_workers, compete_every=10, repeat=1):
+def train(az, env, n_iter, tensorboard, logdir, num_expansions, batch_size, save_every, num_rollouts, num_workers, compete_every=10, repeat=1, device="cpu"):
     logdir = Path(logdir)
     writer = SummaryWriter(log_dir=logdir / "tensorboard")
     optimizer = torch.optim.Adam(az.net.parameters(), lr=0.01)
@@ -122,9 +122,9 @@ def train(az, env, n_iter, tensorboard, logdir, num_expansions, batch_size, save
         for _ in range(repeat):
 
             batch_idx = torch.randperm(training_states.shape[0])[:batch_size]
-            batch = training_states[batch_idx]
-            z = torch.FloatTensor(az.get_training_rewards())[batch_idx]
-            mcts_dist = torch.stack(az.get_training_dists())[batch_idx]
+            batch = training_states[batch_idx].to(device)
+            z = torch.FloatTensor(az.get_training_rewards())[batch_idx].to(device)
+            mcts_dist = torch.stack(az.get_training_dists())[batch_idx].to(device)
 
             optimizer.zero_grad()
             value_loss, policy_loss, reg_loss = calc_losses(az, batch, z, mcts_dist)
@@ -150,30 +150,22 @@ def train(az, env, n_iter, tensorboard, logdir, num_expansions, batch_size, save
         if (i+1) % compete_every == 0:
             env.reset()
             az_original = copy.deepcopy(az)
-            az_original.load_model_from_state_dict(logdir / f"step_{saved_iters[0]}_state_dict.pth")
+            az_original.load_model_from_state_dict(logdir / f"step_{saved_iters[0]}_state_dict.pth").to(device)
             with torch.no_grad():
                 new_wins, original_wins, draws = competition(az, az_original, env, num_expansions, 10)
             writer.add_scalar("Wins/Vs. Initial", new_wins, i)
             writer.add_scalar("Draws/Vs. Initial", draws, i)
 
     writer.close()
-                
-
-
-def test(az):
-    [az.gen_training_data.remote(env, 10, 10) for _ in range(1)]
-    # Print the counter value.
-    for _ in range(10):
-        # time.sleep(1)
-        print(len(ray.get(az.get_training_info.remote())))
 
 if __name__ == "__main__":
     # ray.init()
-    az = AlphaZero(c4_config)
+    device = "cpu"
+    az = AlphaZero(c4_config, device=device)
     
     #.remote(c4_config)
     # print(ray.get(az.get_training_data.remote()))
-    train(az, env, **train_config)
+    train(az, env, **train_config, device=device)
     
 """
 Save:

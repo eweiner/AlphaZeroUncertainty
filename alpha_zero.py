@@ -12,27 +12,28 @@ import ray
 
 
 class AlphaZeroNode:
-    def __init__(self, value, policy_dist, alpha, branching_factor, c1, c2, epsilon, discount):
+    def __init__(self, value, policy_dist, alpha, branching_factor, c1, c2, epsilon, discount, device="cpu"):
         self.alpha = alpha
         self.branching_factor = branching_factor
         self.value = value
-        self.dist = torch.FloatTensor(np.random.dirichlet(alpha * np.ones(branching_factor)))
-        self.child_n_visits = torch.zeros(branching_factor)
+        self.dist = torch.FloatTensor(np.random.dirichlet(alpha * np.ones(branching_factor))).to(device)
+        self.child_n_visits = torch.zeros(branching_factor).to(device)
         self.n_visits = 0
-        self.w_vals = torch.zeros(branching_factor)
+        self.w_vals = torch.zeros(branching_factor).to(device)
         self.c1 = c1
         self.c2 = c2
         self.discount = discount
         self.children = {}
         self.epsilon = epsilon
         self.policy_dist = policy_dist
+        self.device = device
 
     def is_new_node(self, action):
         return not action in self.children.keys()
 
     def expand_node(self, val, policy, action):
         self.children[action] = AlphaZeroNode(
-            val, policy, self.alpha, self.branching_factor, self.c1, self.c2, self.epsilon, self.discount
+            val, policy, self.alpha, self.branching_factor, self.c1, self.c2, self.epsilon, self.discount, device=self.device
         )
         return self.children[action]
 
@@ -49,7 +50,7 @@ class AlphaZeroNode:
 # @ray.remote
 class AlphaZero:
 
-    def __init__(self, az_config):
+    def __init__(self, az_config, device="cpu"):
         net_params = az_config["net_config"]
         self.net = AlphaZeroNet(**net_params)
         self.action_space = az_config["action_space"]
@@ -59,6 +60,8 @@ class AlphaZero:
         self.training_states = []
         self.training_rewards = []
         self.resign_threshold = -0.8
+        self.net.to(device)
+        self.device = device
         
 
 
@@ -91,7 +94,7 @@ class AlphaZero:
                     obs, reward, done, _ = env.step(action)
                     new = curr_node.is_new_node(action)
                     if new:
-                        val, policy = self.net(torch.FloatTensor(obs).unsqueeze(0))
+                        val, policy = self.net(torch.FloatTensor(obs).unsqueeze(0).to(device))
                         curr_node = curr_node.expand_node(val, policy, action)
                     else:
                         curr_node = curr_node.children[action]
