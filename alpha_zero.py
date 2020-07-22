@@ -41,8 +41,8 @@ class AlphaZeroNode:
 
     def choose_action(self, legal_moves):
         bias_bonus = self.c1 + np.log((self.n_visits + self.c2 + 1.0) / self.c2)
-        P_sa = (1 - self.epsilon) * self.policy_dist[:,legal_moves] + self.epsilon * self.dist[legal_moves]
-        all_moves = self.w_vals[legal_moves] / (self.n_visits + 1e-9) + P_sa * np.sqrt(self.n_visits) / (1.0 + self.child_n_visits[legal_moves]) * bias_bonus
+        P_sa = (1 - self.epsilon) * self.policy_dist[legal_moves] + self.epsilon * self.dist[legal_moves]
+        all_moves = self.w_vals[legal_moves] / (self.n_visits + 1e-9) + P_sa * np.sqrt(max(self.n_visits, 1)) / (1.0 + self.child_n_visits[legal_moves]) * bias_bonus
         return legal_moves[np.argmax(
             all_moves
         )]
@@ -69,7 +69,7 @@ class AlphaZero:
         
 
     # @profile
-    def MCTS(self, env, original_board, original_turn, num_expansions=800, temperature=1):
+    def MCTS(self, real_env, original_board, original_turn, num_expansions=800, temperature=1):
         """
         Run MCTS on an environment.
         For each expansion:
@@ -80,14 +80,16 @@ class AlphaZero:
         """
         # There is a bug in you!
         initial_val, initial_policy = self.net(torch.FloatTensor(original_board).unsqueeze(0).to(self.device))
-        root = AlphaZeroNode(initial_val, self.softmax(initial_policy), **self.mcts_params)
+        root = AlphaZeroNode(initial_val[0], self.softmax(initial_policy)[0], **self.mcts_params)
         trajectory = deque()
         reward = 0
         # print("Initial_board", env.render())
         with torch.no_grad():
             for i in range(num_expansions):
                 # temperature = initial_temperature
-                board = env.reset_to_state(original_board, original_turn)
+                env = copy.deepcopy(real_env)
+                board = original_board
+                # board = env.reset_to_state(original_board, original_turn)
                 # print("Post reset_board: ", env.render())
                 turn = original_turn
                 curr_node = root
@@ -101,14 +103,14 @@ class AlphaZero:
                     new = curr_node.is_new_node(action)
                     if new:
                         val, policy = self.net(torch.FloatTensor(obs).unsqueeze(0).to(self.device))
-                        curr_node = curr_node.expand_node(val, self.softmax(policy), action)
+                        curr_node = curr_node.expand_node(val[0], self.softmax(policy)[0], action)
                     else:
                         curr_node = curr_node.children[action]
                     turn *= -1
 
                 # Back up the tree, updating values as we go
                 # print("Len trajectory: ", len(trajectory))
-                running_total = reward if done else -1 * val[0][0]
+                running_total = turn * reward * -1 if done else -1 * val[0][0]
 
                 curr_node.n_visits += 1
                 while trajectory:
@@ -170,26 +172,23 @@ class AlphaZero:
             board, reward, done, info = env.step(action)
             num_moves += 1
 
-        training_dists.append(action_dist)
-        training_states.append(copy.deepcopy(board))
-        players.append(player * -1)
 
             
 
             
                 
-        if should_resign_reward != 0 and should_resign_reward != reward:
-            self.resign_threshold += 0.005
-        elif should_resign_reward == reward:
-            self.resign_threshold -= 0.005
+        # if should_resign_reward != 0 and should_resign_reward != reward:
+        #     self.resign_threshold += 0.005
+        # elif should_resign_reward == reward:
+        #     self.resign_threshold -= 0.005
         
         # print(env.render(mode="unicode"))
         # print(-1 * player, reward)
         for i, p in enumerate(players):
             training_rewards.append((self.discount ** (len(players) - i - 1)) * reward * p)
 
-        for s, r, d, p in zip(training_states, training_rewards, training_dists, players):
-            env.reset_to_state(s, p)
+        # for s, r, d, p in zip(training_states, training_rewards, training_dists, players):
+        #     env.reset_to_state(s, p)
             # print("Player: ", p)
             # print("State, \n", env.render())
             # print("Reward: ",r)

@@ -10,7 +10,7 @@ class Connect4(gym.Env):
     """Custom Environment that follows gym interface"""
     metadata = {'render.modes': ['unicode']}
 
-    def __init__(self, history=2):
+    def __init__(self, history=1):
         super(Connect4, self).__init__()
         self.action_space = spaces.Discrete(7)
 
@@ -90,21 +90,22 @@ class Connect4(gym.Env):
         obs[1, self.board == self.turn * -1] = 1
         turn = 1 if self.turn == 1 else 0
         self.obs.append(obs)
-        return np.concatenate((*self.obs, np.ones((1,6,7)) * turn), axis=0)
+        return self.obs[0]#np.concatenate((*self.obs, np.ones((1,6,7)) * turn), axis=0)
 
     def reset(self):
         self.turn = 1
         self.board = np.zeros((6,7))
         return self.make_obs()
 
-    def reset_to_state(self, obs, turn):
-        self.turn = turn
-        p1_obs = 0
-        p2_obs = 1
-        timestep = obs[-3:-1]
-        self.board = timestep[p1_obs] + -1 * timestep[p2_obs]
-        # print("hello", self.board[::-1])
-        return self.make_obs()
+# BUGGY
+    # def reset_to_state(self, obs, turn):
+    #     self.turn = turn
+    #     p1_obs = 0
+    #     p2_obs = 1
+    #     timestep = obs[-3:-1]
+    #     self.board = timestep[p1_obs] + -1 * timestep[p2_obs]
+    #     # print("hello", self.board[::-1])
+    #     return self.make_obs()
 
     def render(self, mode='human', close=False):
         print(self.check_win(debug=True))

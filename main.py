@@ -17,7 +17,7 @@ import copy
 
 
 c4_net_config = {
-    "in_channels":5, 
+    "in_channels":2, 
     "action_space":env.action_space.n,
     "board_size":42,
     "hidden_channels":32,
@@ -27,7 +27,7 @@ c4_net_config = {
 c4_mcts_config = {
     "c1":1.2,
     "c2":10000,
-    "alpha":1,
+    "alpha":0.8,
     "epsilon":0.25,
     "branching_factor":env.action_space.n,
     "discount": 0.98
@@ -41,13 +41,13 @@ c4_config = {
 }
 
 train_config = {
-    "n_iter": 300,
+    "n_iter": 800,
     "tensorboard": True,
     "logdir": "tmp",
-    "num_expansions": 20,
+    "num_expansions": 40,
     "batch_size": 128,
     "save_every": 50,
-    "num_rollouts":10,
+    "num_rollouts":20,
     "num_workers": 1
 }
 
@@ -57,6 +57,13 @@ def calc_losses(az, batch, z, mcts_dist):
     # print(z.shape)
     # print(mcts_dist.shape)
     values, policies = az.net(batch)
+    # for b,v,p,z_i,mc in zip(batch, values, policies, z, mcts_dist):
+    #     print("Board: ", b)
+    #     print("Value: ", v)
+    #     print("Z", z_i)
+    #     print("Dist: ", torch.nn.functional.softmax(p, dim=-1))
+    #     print("mc: ", mc)
+
     # print(values.shape)
     # print(policies.shape)
     # Calc Value loss
@@ -77,7 +84,7 @@ def calc_losses(az, batch, z, mcts_dist):
         reg_loss += (param ** 2).sum()
     reg_factor = 1.0 / param_len * 0.001
     reg_loss *= reg_factor
-    print("Reg loss: ", reg_loss)
+    # print("Reg loss: ", reg_loss)
 
     return value_loss, policy_loss, reg_loss
 
@@ -100,8 +107,8 @@ def competition(az1:AlphaZero, az2:AlphaZero, env: gym.Env, num_expansions: int,
             action_dist, val, policy = player.MCTS(copy.deepcopy(env), board, turn, num_expansions=num_expansions)
             if render:
                 print(f"Actiondist: {action_dist} for player {turn}")
-                print(f"Predicted Policy: {torch.nn.Softmax(dim=-1)(policy)}")
-                print(f"With val: {val}")
+                print(f"Predicted Policy: {torch.nn.Softmax(dim=-1)(policy)[0]}")
+                print(f"With val: {val[0][0]}")
             _, action = torch.max(action_dist, 0)
             board, reward, done, _ = env.step(action)
             if render:
@@ -120,7 +127,7 @@ def competition(az1:AlphaZero, az2:AlphaZero, env: gym.Env, num_expansions: int,
 def train(az, env, n_iter, tensorboard, logdir, num_expansions, batch_size, save_every, num_rollouts, num_workers, compete_every=10, repeat=1, device="cpu"):
     logdir = Path(logdir)
     writer = SummaryWriter(log_dir=logdir / "tensorboard")
-    optimizer = torch.optim.Adam(az.net.parameters(), lr=0.01)
+    optimizer = torch.optim.Adam(az.net.parameters(), lr=0.003)
     saved_iters = []
     for i in tqdm(range(n_iter)):
         az.gen_training_data(env, num_rollouts, num_expansions)
@@ -145,7 +152,9 @@ def train(az, env, n_iter, tensorboard, logdir, num_expansions, batch_size, save
             writer.add_scalar("Policy Loss/Train", policy_loss, i)
             writer.add_scalar("Value Loss/Train", value_loss, i)
 
-        az.flush()
+        if i % 2 == 0:
+            az.flush()
+
             
         if  i % (save_every - 1) == 0:
             env.reset()
@@ -170,7 +179,8 @@ def train(az, env, n_iter, tensorboard, logdir, num_expansions, batch_size, save
                 new_wins, prev_wins, draws = competition(az, az_original, env, num_expansions, 20)
             writer.add_scalar("Wins/Vs. Previous", new_wins, i)
             writer.add_scalar("Draws/Vs. Previous", draws, i)
-            competition(az, az, env, num_expansions, 1, render=True)
+            with torch.no_grad():
+                competition(az, az, env, num_expansions, 1, render=True)
 
     writer.close()
 
