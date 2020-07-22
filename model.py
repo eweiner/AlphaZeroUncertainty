@@ -40,7 +40,7 @@ class AlphaZeroNet(nn.Module):
 
     def __init__(self, in_channels, action_space, board_size, hidden_channels=32, n_residual_blocks=4):
         super(AlphaZeroNet, self).__init__()
-        self.main_net = nn.ModuleList([SimpleConv2d(in_channels, hidden_channels)])
+        self.main_net = nn.ModuleList([SimpleConv2d(in_channels, hidden_channels, kernel_size=(5,5), padding=(2,2))])
         trunk = [ResidualBlock(hidden_channels) for _ in range(n_residual_blocks)]
         self.main_net.extend(trunk)
         self.feauture_extraction = nn.Sequential(*self.main_net)
