@@ -186,7 +186,7 @@ def train(az, env, n_iter, tensorboard, logdir, num_expansions, batch_size, save
 
 if __name__ == "__main__":
     # ray.init()
-    device = "cpu"
+    device = "cuda: 0"
     az = AlphaZero(c4_config, device=device)
     
     #.remote(c4_config)

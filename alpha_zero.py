@@ -27,7 +27,7 @@ class AlphaZeroNode:
         self.discount = discount
         self.children = {}
         self.epsilon = epsilon
-        self.policy_dist = policy_dist
+        self.policy_dist = policy_dist.to(device)
         self.device = device
 
     def is_new_node(self, action):
