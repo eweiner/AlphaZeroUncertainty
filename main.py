@@ -1,7 +1,7 @@
 import ray
 import gym
 from connect4_env import Connect4
-from alpha_zero import AlphaZero
+from alpha_zero_parallel import AlphaZero
 import time
 from torch.utils.tensorboard import SummaryWriter
 import torch
@@ -21,13 +21,13 @@ c4_net_config = {
     "action_space":env.action_space.n,
     "board_size":42,
     "hidden_channels":32,
-    "n_residual_blocks":3
+    "n_residual_blocks":5
 }
 
 c4_mcts_config = {
     "c1":1.2,
     "c2":10000,
-    "alpha":0.8,
+    "alpha":1.0,
     "epsilon":0.25,
     "branching_factor":env.action_space.n,
     "discount": 0.98
@@ -45,7 +45,7 @@ train_config = {
     "tensorboard": True,
     "logdir": "tmp",
     "num_expansions": 40,
-    "batch_size": 128,
+    "batch_size": 256,
     "save_every": 50,
     "num_rollouts":20,
     "num_workers": 1
@@ -56,6 +56,7 @@ def calc_losses(az, batch, z, mcts_dist):
     # print(batch.shape)
     # print(z.shape)
     # print(mcts_dist.shape)
+    az.net = az.net.train()
     values, policies = az.net(batch)
     # for b,v,p,z_i,mc in zip(batch, values, policies, z, mcts_dist):
     #     print("Board: ", b)
@@ -130,7 +131,7 @@ def train(az, env, n_iter, tensorboard, logdir, num_expansions, batch_size, save
     optimizer = torch.optim.Adam(az.net.parameters(), lr=0.003)
     saved_iters = []
     for i in tqdm(range(n_iter)):
-        az.gen_training_data(env, num_rollouts, num_expansions)
+        az.gen_training_data_parallel(env, num_rollouts, num_expansions)
         
         # Get data
         training_states = torch.FloatTensor(az.get_training_states())
@@ -152,8 +153,8 @@ def train(az, env, n_iter, tensorboard, logdir, num_expansions, batch_size, save
             writer.add_scalar("Policy Loss/Train", policy_loss, i)
             writer.add_scalar("Value Loss/Train", value_loss, i)
 
-        if i % 2 == 0:
-            az.flush()
+        # if i % 2 == 0:
+        #     az.flush()
 
             
         if  i % (save_every - 1) == 0:
@@ -172,11 +173,11 @@ def train(az, env, n_iter, tensorboard, logdir, num_expansions, batch_size, save
             az_prev = copy.deepcopy(az)
             az_prev.load_model_from_state_dict(logdir / f"step_{saved_iters[-1]}_state_dict.pth")
             with torch.no_grad():
-                new_wins, original_wins, draws = competition(az, az_original, env, num_expansions, 20)
+                new_wins, original_wins, draws = competition(az, az_original, env, num_expansions, 10)
             writer.add_scalar("Wins/Vs. Initial", new_wins, i)
             writer.add_scalar("Draws/Vs. Initial", draws, i)
             with torch.no_grad():
-                new_wins, prev_wins, draws = competition(az, az_original, env, num_expansions, 20)
+                new_wins, prev_wins, draws = competition(az, az_prev, env, num_expansions, 10)
             writer.add_scalar("Wins/Vs. Previous", new_wins, i)
             writer.add_scalar("Draws/Vs. Previous", draws, i)
             with torch.no_grad():
@@ -186,9 +187,10 @@ def train(az, env, n_iter, tensorboard, logdir, num_expansions, batch_size, save
 
 if __name__ == "__main__":
     # ray.init()
-    device = "cuda: 0"
+    device = "cpu"
     az = AlphaZero(c4_config, device=device)
-    
+    # az.load_model_from_state_dict('tmp/step_294_state_dict.pth')
+    # az.net.to(device)
     #.remote(c4_config)
     # print(ray.get(az.get_training_data.remote()))
     train(az, env, **train_config, device=device)

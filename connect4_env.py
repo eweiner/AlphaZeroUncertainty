@@ -19,6 +19,7 @@ class Connect4(gym.Env):
         self.turn = 1
         self.board = np.zeros((6,7)) 
         self.obs = deque([np.zeros((2,6,7)) for _ in range(history)], maxlen=history) 
+        self.checkpoint()
         
 
     def step(self, action):
@@ -81,21 +82,31 @@ class Connect4(gym.Env):
         return 0
 
     def make_obs(self):
-        for obs in self.obs:
-            temp_plane = obs[0]
-            obs[0] = obs[1]
-            obs[1] = temp_plane
+        # for obs in self.obs:
+        #     temp_plane = obs[0]
+        #     obs[0] = obs[1]
+        #     obs[1] = temp_plane
         obs = np.zeros((2, 6, 7))
         obs[0,self.board == self.turn] = 1
-        obs[1, self.board == self.turn * -1] = 1
-        turn = 1 if self.turn == 1 else 0
+        obs[1, self.board == (self.turn * -1)] = 1
         self.obs.append(obs)
-        return self.obs[0]#np.concatenate((*self.obs, np.ones((1,6,7)) * turn), axis=0)
+        return self.obs[-1]#np.concatenate((*self.obs, np.ones((1,6,7)) * turn), axis=0)
 
     def reset(self):
         self.turn = 1
         self.board = np.zeros((6,7))
         return self.make_obs()
+
+    def checkpoint(self):
+        self.c_turn = self.turn
+        self.c_board = np.copy(self.board)
+        self.c_obs = [np.copy(obs) for obs in self.obs]
+
+    def restore_checkpoint(self):
+        self.turn = self.c_turn
+        self.board = np.copy(self.c_board)
+        self.obs = [np.copy(obs) for obs in self.c_obs]
+        return self.obs
 
 # BUGGY
     # def reset_to_state(self, obs, turn):
