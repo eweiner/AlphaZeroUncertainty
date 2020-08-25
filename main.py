@@ -17,11 +17,11 @@ import copy
 
 
 c4_net_config = {
-    "in_channels":2, 
+    "in_channels":3, 
     "action_space":env.action_space.n,
     "board_size":42,
-    "hidden_channels":32,
-    "n_residual_blocks":5
+    "hidden_channels":16,
+    "n_residual_blocks":4
 }
 
 c4_mcts_config = {
@@ -30,7 +30,7 @@ c4_mcts_config = {
     "alpha":1.0,
     "epsilon":0.25,
     "branching_factor":env.action_space.n,
-    "discount": 0.98
+    "discount": 0.99
 }
 
 c4_config = {
@@ -41,14 +41,15 @@ c4_config = {
 }
 
 train_config = {
-    "n_iter": 800,
+    "n_iter": 100,
     "tensorboard": True,
     "logdir": "tmp",
-    "num_expansions": 40,
-    "batch_size": 256,
+    "num_expansions": 25,
+    "batch_size": 512,
     "save_every": 50,
-    "num_rollouts":20,
-    "num_workers": 1
+    "num_rollouts":50,
+    "num_workers": 1,
+    "compete_every": 1
 }
 
 
@@ -79,12 +80,12 @@ def calc_losses(az, batch, z, mcts_dist):
 
     # Calc Regularizer loss
     reg_loss = 0
-    param_len = 0
-    for param in az.net.parameters():
-        param_len += 1
-        reg_loss += (param ** 2).sum()
-    reg_factor = 1.0 / param_len * 0.001
-    reg_loss *= reg_factor
+    # param_len = 0
+    # for param in az.net.parameters():
+    #     param_len += 1
+    #     reg_loss += (param ** 2).sum()
+    # reg_factor = 1.0 / param_len * 1e-5
+    # reg_loss *= reg_factor
     # print("Reg loss: ", reg_loss)
 
     return value_loss, policy_loss, reg_loss
@@ -128,14 +129,19 @@ def competition(az1:AlphaZero, az2:AlphaZero, env: gym.Env, num_expansions: int,
 def train(az, env, n_iter, tensorboard, logdir, num_expansions, batch_size, save_every, num_rollouts, num_workers, compete_every=10, repeat=1, device="cpu"):
     logdir = Path(logdir)
     writer = SummaryWriter(log_dir=logdir / "tensorboard")
-    optimizer = torch.optim.Adam(az.net.parameters(), lr=0.003)
+    optimizer = torch.optim.Adam(az.net.parameters())
     saved_iters = []
+    az_prev = AlphaZero(c4_config, device=device)
+    az_prev.net.load_state_dict(az.net.state_dict())
     for i in tqdm(range(n_iter)):
         az.gen_training_data_parallel(env, num_rollouts, num_expansions)
-        
+        training_states = torch.FloatTensor(az.get_training_states())
+        while training_states.shape[0] <= 5000:
+            print(f"Filling training buffer..., {training_states.shape[0]}/5000")
+            az.gen_training_data_parallel(env, num_rollouts, num_expansions)
+            training_states = torch.FloatTensor(az.get_training_states())
         # Get data
         training_states = torch.FloatTensor(az.get_training_states())
-
         for _ in range(repeat):
 
             batch_idx = torch.randperm(training_states.shape[0])[:batch_size]
@@ -157,31 +163,37 @@ def train(az, env, n_iter, tensorboard, logdir, num_expansions, batch_size, save
         #     az.flush()
 
             
-        if  i % (save_every - 1) == 0:
+        if  i % save_every == 0 or i == n_iter - 1:
             env.reset()
             print(f"Loss = {loss} on iter {i}")
             saved_iters.append(i)
             torch.save(az.net.state_dict(), logdir / f"step_{i}_state_dict.pth")
-            print("Playing example game:")
-            competition(az, az, env, num_expansions, 1, render=True)
+            # print("Playing example game:")
+            # competition(az, az, env, num_expansions, 1, render=True)
 
-        if i % compete_every == 0:
+        if i % compete_every == 0 and i != 0:
             env.reset()
-            az_original = copy.deepcopy(az)
-            az_original.load_model_from_state_dict(logdir / f"step_{saved_iters[0]}_state_dict.pth")
-            az_original.net.to(device)
-            az_prev = copy.deepcopy(az)
-            az_prev.load_model_from_state_dict(logdir / f"step_{saved_iters[-1]}_state_dict.pth")
+            if i % 5 == 0:
+                az_original = AlphaZero(c4_config, device=device)
+                az_original.load_model_from_state_dict(logdir / f"step_{saved_iters[0]}_state_dict.pth")
+                az_original.net.to(device)
+                # az_prev = AlphaZero(c4_config, device=device)
+                # az_prev.load_model_from_state_dict(logdir / f"step_{saved_iters[-1]}_state_dict.pth")
+                with torch.no_grad():
+                    new_wins, original_wins, draws = competition(az, az_original, env, num_expansions, 10)
+                with torch.no_grad():
+                    competition(az, az, env, num_expansions, 1, render=True)
+                writer.add_scalar("Wins/Vs. Initial", new_wins, i)
+                writer.add_scalar("Draws/Vs. Initial", draws, i)
             with torch.no_grad():
-                new_wins, original_wins, draws = competition(az, az_original, env, num_expansions, 10)
-            writer.add_scalar("Wins/Vs. Initial", new_wins, i)
-            writer.add_scalar("Draws/Vs. Initial", draws, i)
-            with torch.no_grad():
-                new_wins, prev_wins, draws = competition(az, az_prev, env, num_expansions, 10)
+                new_wins, prev_wins, draws = competition(az, az_prev, env, num_expansions, 20)
+            if new_wins / 20.0 < 0.55:
+                az.net.load_state_dict(az_prev.net.state_dict())
+            else:
+                az_prev.net.load_state_dict(az.net.state_dict())
             writer.add_scalar("Wins/Vs. Previous", new_wins, i)
             writer.add_scalar("Draws/Vs. Previous", draws, i)
-            with torch.no_grad():
-                competition(az, az, env, num_expansions, 1, render=True)
+            
 
     writer.close()
 
@@ -189,7 +201,7 @@ if __name__ == "__main__":
     # ray.init()
     device = "cpu"
     az = AlphaZero(c4_config, device=device)
-    # az.load_model_from_state_dict('tmp/step_294_state_dict.pth')
+    # az.load_model_from_state_dict('tmp/step_0_state_dict.pth')
     # az.net.to(device)
     #.remote(c4_config)
     # print(ray.get(az.get_training_data.remote()))
