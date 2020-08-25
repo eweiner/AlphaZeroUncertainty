@@ -25,7 +25,6 @@ class ResidualBlock(nn.Module):
     def __init__(self, n_channels):
         super(ResidualBlock, self).__init__()
         self.features = nn.ModuleList([SimpleConv2d(n_channels, n_channels),
-        SimpleConv2d(n_channels, n_channels),SimpleConv2d(n_channels, n_channels),
         SimpleConv2d(n_channels, n_channels, prelu=False)])
 
     def forward(self, x):
@@ -47,7 +46,7 @@ class AlphaZeroNet(nn.Module):
 
         self.value_net_layers = nn.ModuleList([SimpleConv2d(hidden_channels, 1, kernel_size=(1,1), padding=0),
         Flatten(),
-        nn.Linear(board_size, 256), nn.ReLU(), nn.Linear(256, 1), nn.Tanh()])
+        nn.Linear(board_size, 128), nn.ReLU(), nn.Linear(128, 1), nn.Tanh()])
         self.value_net = nn.Sequential(*self.value_net_layers)
 
         self.policy_net_layers = nn.ModuleList([SimpleConv2d(hidden_channels, 2, kernel_size=(1,1), padding=0),
@@ -62,3 +61,17 @@ class AlphaZeroNet(nn.Module):
         policy = self.policy_net(features)
         return val, policy
 
+
+if __name__ == "__main__":
+    test = AlphaZeroNet(2, 7, 42)
+    # test_input = torch.arange(84, dtype=torch.float32).reshape(1, 2, 6, 7)
+    # optimizer = torch.optim.Adam(test.parameters())
+    # for _ in range(100):
+    #     optimizer.zero_grad()
+    #     val, policy = test(test_input)
+    #     loss = (1 - val)**2 - (torch.FloatTensor([0.9, 0.0, 0.02, 0.02, 0.02, 0.02, 0.02]) * torch.log(torch.nn.functional.softmax(policy.squeeze(0), dim=-1))).sum()
+    #     loss.backward()
+    #     optimizer.step()
+    # val, policy = test(test_input)
+    # print(torch.nn.functional.softmax(policy.squeeze(0)))
+    # print(val)
