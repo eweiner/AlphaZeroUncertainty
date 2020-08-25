@@ -15,10 +15,10 @@ class Connect4(gym.Env):
         self.action_space = spaces.Discrete(7)
 
         self.observation_space = spaces.Box(low=0, high=255, shape=
-                        (2 * history + 1, 6, 7), dtype=np.uint8)
+                        (3, 6, 7), dtype=np.uint8)
         self.turn = 1
         self.board = np.zeros((6,7)) 
-        self.obs = deque([np.zeros((2,6,7)) for _ in range(history)], maxlen=history) 
+        self.obs = deque([np.zeros((3,6,7)) for _ in range(history)], maxlen=history) 
         self.checkpoint()
         
 
@@ -86,9 +86,10 @@ class Connect4(gym.Env):
         #     temp_plane = obs[0]
         #     obs[0] = obs[1]
         #     obs[1] = temp_plane
-        obs = np.zeros((2, 6, 7))
+        obs = np.zeros((3, 6, 7))
         obs[0,self.board == self.turn] = 1
         obs[1, self.board == (self.turn * -1)] = 1
+        obs[2] = 1
         self.obs.append(obs)
         return self.obs[-1]#np.concatenate((*self.obs, np.ones((1,6,7)) * turn), axis=0)
 
