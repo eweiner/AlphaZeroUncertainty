@@ -10,6 +10,8 @@ import random
 import torch.nn as nn
 import ray
 
+from multiprocessing import Pool
+
 
 #DELETE:
 # from main import c4_config
@@ -38,7 +40,7 @@ class AlphaZeroNode:
 
     def expand_node(self, val, policy, action):
         self.children[action] = AlphaZeroNode(
-            val, policy, self.alpha, self.branching_factor, self.c1, self.c2, self.epsilon, self.discount, device=self.device
+            val, policy, self.alpha, self.branching_factor, self.c1, self.c2, 0, self.discount, device=self.device
         )
         return self.children[action]
 
@@ -61,9 +63,9 @@ class AlphaZero:
         self.action_space = az_config["action_space"]
         self.obs_space = az_config["observation_space"]
         self.mcts_params = az_config["mcts_config"]
-        self.training_dists = deque(maxlen=8000)
-        self.training_states = deque(maxlen=8000)
-        self.training_rewards = deque(maxlen=8000)
+        self.training_dists = deque(maxlen=20000)
+        self.training_states = deque(maxlen=20000)
+        self.training_rewards = deque(maxlen=20000)
         self.resign_threshold = -0.8
         self.net.to(device)
         self.device = device
@@ -233,8 +235,8 @@ class AlphaZero:
                 # print("Board: ",i, "\n", env.render())
                 if not done:
                     boards.append(board)
-                dones[idxs[i]] = torch.tensor(done)
-                rewards[idxs[i]] = reward
+                dones[idx] = torch.tensor(done)
+                rewards[idx] = reward
 
             num_moves += 1
 
@@ -252,38 +254,43 @@ class AlphaZero:
         return new_training_states, training_rewards, new_training_dists
             
     # @profile
+    @staticmethod
+    def run_until_blocked(args):
+        env, node, turn = args
+        trajectory = deque() 
+        done = False
+        new = False
+        while not done and not new:
+            action = int(node.choose_action(torch.LongTensor(env.legal_actions)))
+            trajectory.append((action, node))
+            obs, reward, done, _ = env.step(action)
+            turn *= -1
+            new = node.is_new_node(action)
+            if not new:
+                node = node.children[action]
+        return node, obs, trajectory, reward * turn, done
+
     def MCTS_parallel(self, real_envs, original_boards, original_turn, num_expansions=800, temperature=1):
-        self.net = self.net.eval()
-        initial_values, initial_policy = self.net(torch.FloatTensor(original_boards))
-        root_nodes = [AlphaZeroNode(initial_values[i], self.softmax(initial_policy)[i], **self.mcts_params) for i in range(len(real_envs))]
-        nodes = root_nodes
-        initial_actions = [nodes[i].choose_action(real_envs[i].legal_actions) for i in range(len(real_envs))]
-        envs = real_envs
-        for env in envs:
-            env.checkpoint()
         with torch.no_grad():
+            self.net = self.net.eval()
+            initial_values, initial_policy = self.net(torch.FloatTensor(original_boards))
+            root_nodes = [AlphaZeroNode(initial_values[i], self.softmax(initial_policy)[i], **self.mcts_params) for i in range(len(real_envs))]
+            nodes = root_nodes
+            initial_actions = [nodes[i].choose_action(real_envs[i].legal_actions) for i in range(len(real_envs))]
+            envs = real_envs
+            for env in envs:
+                env.checkpoint()
+        
             for i in range(num_expansions):
                 boards = [env.restore_checkpoint() for env in envs]
                 turn = original_turn
                 nodes = root_nodes
-                
-                def run_until_blocked(env, node, turn):
-                    trajectory = deque() 
-                    done = False
-                    new = False
-                    while not done and not new:
-                        action = int(node.choose_action(torch.LongTensor(env.legal_actions)))
-                        trajectory.append((action, node))
-                        obs, reward, done, _ = env.step(action)
-                        turn *= -1
-                        new = node.is_new_node(action)
-                        if not new:
-                            node = node.children[action]
-                    return node, obs, trajectory, reward * turn, done
 
                 new_nodes, new_boards, trajectories, rewards, dones = [], [], [], [], []
-                for env, node in zip(envs, nodes):
-                    node, board, trajectory, reward, done = run_until_blocked(env, node, turn)
+                mcts_roots = zip(envs, nodes, [turn] * len(envs))
+                # with Pool(4) as p:
+                mcts_pre_net_results = map(self.run_until_blocked, mcts_roots)
+                for node, board, trajectory, reward, done in mcts_pre_net_results:
                     new_nodes.append(node)
                     new_boards.append(torch.tensor(board, dtype=torch.float32))
                     trajectories.append(trajectory)
@@ -300,6 +307,7 @@ class AlphaZero:
                         backward_message = node.discount * backward_message * -1
                         return backward_message
                 
+                new_roots = []
                 for trajectory, backward_message, final_val, final_policy in zip(trajectories, backward_messages, values, policies):
                     final_action, node = trajectory.pop()
                     final_node = node.expand_node(-1 * backward_message, self.softmax(final_policy), final_action)
@@ -309,7 +317,9 @@ class AlphaZero:
                     while trajectory:
                         action, node = trajectory.pop()
                         backward_message = update_node(node, action, backward_message)
-
+                    new_roots.append(node)
+                root_nodes = new_roots
+            
             final_dists = [(root.child_n_visits ** (1.0 / temperature)) / (root.n_visits ** (1.0 / temperature)) for root in root_nodes]
             final_dists = [final_dist / final_dist.sum() for final_dist in final_dists]
             self.net = self.net.train()
