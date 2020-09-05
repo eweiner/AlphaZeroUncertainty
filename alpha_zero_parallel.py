@@ -357,7 +357,7 @@ class AlphaZero:
         return len(self.training_states)
 
     def load_model_from_state_dict(self, path):
-        self.net.load_state_dict(torch.load(path))
+        self.net.load_state_dict(torch.load(path, map_location=torch.device('cpu')))
         self.net.eval()
     
     
