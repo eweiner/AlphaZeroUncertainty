@@ -41,10 +41,10 @@ c4_config = {
 }
 
 train_config = {
-    "n_iter": 100,
+    "n_iter": 200,
     "tensorboard": True,
-    "logdir": "tmp",
-    "num_expansions": 25,
+    "logdir": "tmp/alpha1.0/trial1",
+    "num_expansions": 40,
     "batch_size": 512,
     "save_every": 50,
     "num_rollouts":50,
@@ -167,7 +167,7 @@ def train(az, env, n_iter, tensorboard, logdir, num_expansions, batch_size, save
             env.reset()
             print(f"Loss = {loss} on iter {i}")
             saved_iters.append(i)
-            torch.save(az.net.state_dict(), logdir / f"step_{i}_state_dict.pth")
+            torch.save(az_prev.net.state_dict(), logdir / f"step_{i}_state_dict.pth")
             # print("Playing example game:")
             # competition(az, az, env, num_expansions, 1, render=True)
 
