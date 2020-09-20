@@ -11,6 +11,8 @@ from tqdm import tqdm
 import torch.nn as nn
 from pathlib import Path
 import copy
+import sys
+import getopt
 
 # from line_profiler import profile
 
@@ -24,7 +26,7 @@ c4_net_config = {
     "n_residual_blocks":4
 }
 
-c4_mcts_config = {
+c4_mcts_onfig = {
     "c1":1.2,
     "c2":10000,
     "alpha":1.0,
@@ -52,6 +54,27 @@ train_config = {
     "compete_every": 1
 }
 
+def getInputs(argv):
+''' 
+gets gets user inputs for alpha value and log directory
+'''
+    alpha = 0
+    log_directory = ''
+    try:
+        opts, args = getopt.getopt(argv, "ha:d", ["alpha=", "logdir="])
+    except getopt.GetoptError:
+        print 'main.py -a <alpha> -d <log directory>'
+        sys.exit(2)
+    for opt, arg in opts:
+    if opt == '-h':
+        print 'main.py -a <alpha> -d <log directory>'
+        sys.exit()
+    elif opt in ("-a", "--alpha"):
+        alpha = arg
+    elif opt in ("-d", "--logdir"):
+        log_directory = arg
+    print "alpha = ", alpha
+    print "log_dir", log_directory
 
 def calc_losses(az, batch, z, mcts_dist):
     # print(batch.shape)
@@ -200,12 +223,13 @@ def train(az, env, n_iter, tensorboard, logdir, num_expansions, batch_size, save
 if __name__ == "__main__":
     # ray.init()
     device = "cpu"
+    getInputs(sys.argv[1:])
     az = AlphaZero(c4_config, device=device)
     # az.load_model_from_state_dict('tmp/step_0_state_dict.pth')
     # az.net.to(device)
     #.remote(c4_config)
     # print(ray.get(az.get_training_data.remote()))
-    train(az, env, **train_config, device=device)
+    train(az, env, **train_config, device=device))
     
 """
 Save:
