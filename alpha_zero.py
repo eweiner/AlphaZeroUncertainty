@@ -58,9 +58,9 @@ class AlphaZero:
         self.action_space = az_config["action_space"]
         self.obs_space = az_config["observation_space"]
         self.mcts_params = az_config["mcts_config"]
-        self.training_dists = []
-        self.training_states = []
-        self.training_rewards = []
+        self.training_dists = deque(maxlen=2000)
+        self.training_states = deque(maxlen=2000)
+        self.training_rewards = deque(maxlen=2000)
         self.resign_threshold = -0.8
         self.net.to(device)
         self.device = device
@@ -122,7 +122,6 @@ class AlphaZero:
                     
                     
 
-            
             final_dist = (root.child_n_visits ** (1.0 / temperature)) / (root.n_visits ** (1.0 / temperature))
             final_dist /= final_dist.sum()
 
@@ -153,8 +152,8 @@ class AlphaZero:
             player = -1 * player
             #env._board = board
             # print(env.render(mode="unicode"))
-            if (num_moves + 1) % 15 == 0:
-                temperature /= 2.0
+            if (num_moves + 1) % 10 == 0:
+                temperature = max(temperature / 2, 0.25)
             action_dist, val, policy = self.MCTS(copy.deepcopy(env), board, player, num_expansions, temperature)
             min_val = min(min_val, val)
             training_dists.append(action_dist)
@@ -206,18 +205,18 @@ class AlphaZero:
             self.training_dists.extend(dists)
 
     def get_training_states(self):
-        return self.training_states
+        return list(self.training_states)
 
     def get_training_rewards(self):
-        return self.training_rewards
+        return list(self.training_rewards)
 
     def get_training_dists(self):
-        return self.training_dists
+        return list(self.training_dists)
 
-    def flush(self):
-        self.training_states = []
-        self.training_rewards = []
-        self.trianing_dists = []
+    # def flush(self):
+    #     self.training_states = deque(maxlen=5000)
+    #     self.training_rewards = deque(maxlen=5000)
+    #     self.trianing_dists = deque(maxlen=5000)
 
     @property
     def num_data_points(self):

@@ -12,6 +12,8 @@ import torch.nn as nn
 from pathlib import Path
 import copy
 
+import argparse
+
 # from line_profiler import profile
 
 
@@ -199,7 +201,25 @@ def train(az, env, n_iter, tensorboard, logdir, num_expansions, batch_size, save
 
 if __name__ == "__main__":
     # ray.init()
-    device = "cpu"
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--alpha', dest='alpha',
+                        required=True,
+                        help='Alpha value for dirichlet')
+    parser.add_argument('--logdir', dest='logdir',
+                        default='tmp',
+                        help='Big directory')
+    parser.add_argument('--trial', dest='trial',
+                        required=True,
+                        help='Trial num')
+    parser.add_argument('--device', dest='device',
+                        default='cpu',
+                        help='cuda or cpu')
+    args = parser.parse_args()
+    alpha = args.alpha
+    logdir = Path(args.logdir) / f"alpha{args.alpha}" / f"trial{args.trial}"
+    device = args.device
+    c4_config['mcts_config']['alpha'] = alpha
+    train_config['logdir'] = str(logdir)
     az = AlphaZero(c4_config, device=device)
     # az.load_model_from_state_dict('tmp/step_0_state_dict.pth')
     # az.net.to(device)
