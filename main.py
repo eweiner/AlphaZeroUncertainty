@@ -43,7 +43,7 @@ c4_config = {
 }
 
 train_config = {
-    "n_iter": 200,
+    "n_iter": 1600,
     "tensorboard": True,
     "logdir": "tmp/alpha1.0/trial1",
     "num_expansions": 40,
