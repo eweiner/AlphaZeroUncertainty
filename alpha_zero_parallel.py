@@ -8,9 +8,6 @@ from tqdm import tqdm
 import torch
 import random
 import torch.nn as nn
-import ray
-
-from multiprocessing import Pool
 
 
 #DELETE:

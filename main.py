@@ -1,4 +1,3 @@
-import ray
 import gym
 from connect4_env import Connect4
 from alpha_zero_parallel import AlphaZero
@@ -46,8 +45,8 @@ train_config = {
     "n_iter": 1600,
     "tensorboard": True,
     "logdir": "tmp/alpha1.0/trial1",
-    "num_expansions": 40,
-    "batch_size": 512,
+    "num_expansions": 20,
+    "batch_size": 256,
     "save_every": 50,
     "num_rollouts":50,
     "num_workers": 1,
@@ -218,7 +217,7 @@ if __name__ == "__main__":
     alpha = args.alpha
     logdir = Path(args.logdir) / f"alpha{args.alpha}" / f"trial{args.trial}"
     device = args.device
-    c4_config['mcts_config']['alpha'] = alpha
+    c4_config['mcts_config']['alpha'] = float(alpha)
     train_config['logdir'] = str(logdir)
     az = AlphaZero(c4_config, device=device)
     # az.load_model_from_state_dict('tmp/step_0_state_dict.pth')

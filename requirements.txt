@@ -1,0 +1,8 @@
+torch
+tensorboard==2.3.0
+gym==0.18.0
+numpy
+tqdm
+
+
+
